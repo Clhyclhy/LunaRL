@@ -1,0 +1,82 @@
+{
+  "target_umo": {
+    "description": "目标用户会话 ID (unified_msg_origin)",
+    "type": "string",
+    "default": "",
+    "hint": "使用命令 !get_umo 获取当前会话的 ID"
+  },
+  "enable_ai_enhance": {
+    "description": "启用 AI 增强消息内容",
+    "type": "bool",
+    "default": false
+  },
+  "timezone": {
+    "description": "时区",
+    "type": "string",
+    "default": "Asia/Shanghai"
+  },
+  "weekday_templates": {
+    "description": "工作日时间表模板库",
+    "type": "dict",
+    "default": {
+      "标准工作日": [
+        {"time": "07:00", "random_range": 5, "message": "早上好呀，太阳晒屁股啦，快起床~", "ai_prompt": "温柔叫起床"},
+        {"time": "12:00", "random_range": 3, "message": "中午好，记得按时吃饭，别饿着自己哦~", "ai_prompt": "关心吃午饭"},
+        {"time": "18:00", "random_range": 5, "message": "下班啦，今天辛苦了，好好放松一下~", "ai_prompt": "安慰下班辛苦"},
+        {"time": "22:00", "random_range": 3, "message": "晚安，做个好梦，明天见~", "ai_prompt": "温柔说晚安"}
+      ]
+    }
+  },
+  "rest_templates": {
+    "description": "休息日时间表模板库",
+    "type": "dict",
+    "default": {
+      "普通周末": [
+        {"time": "09:00", "random_range": 10, "message": "周末好呀，睡个懒觉真舒服~", "ai_prompt": "周末起床问候"},
+        {"time": "12:30", "random_range": 5, "message": "中午好，周末吃点好的犒劳自己~", "ai_prompt": "周末午餐问候"},
+        {"time": "22:30", "random_range": 5, "message": "周末晚安，明天可以继续休息哦~", "ai_prompt": "周末晚安问候"}
+      ]
+    }
+  },
+  "sets": {
+    "description": "时间表组合 (Set)",
+    "type": "dict",
+    "default": {
+      "日常组合": {
+        "weekday": "标准工作日",
+        "rest": "普通周末"
+      }
+    }
+  },
+  "active_set": {
+    "description": "当前使用的 Set 名称",
+    "type": "string",
+    "default": "日常组合"
+  },
+  "calendar": {
+    "description": "日历标记（特殊日期）",
+    "type": "dict",
+    "default": {}
+  },
+  "github_token": {
+    "description": "GitHub Personal Access Token",
+    "type": "string",
+    "default": "",
+    "hint": "用于同步配置到 GitHub 私密仓库"
+  },
+  "github_repo": {
+    "description": "GitHub 仓库 (格式: username/repo)",
+    "type": "string",
+    "default": ""
+  },
+  "github_file_path": {
+    "description": "GitHub 配置文件路径",
+    "type": "string",
+    "default": "astrbot_schedule_config.json"
+  },
+  "auto_sync": {
+    "description": "自动同步到 GitHub",
+    "type": "bool",
+    "default": false
+  }
+}
