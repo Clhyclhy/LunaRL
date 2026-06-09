@@ -823,3 +823,232 @@ class ScheduleGreetingPlugin(Star):
                     yield event.plain_result(f"已添加: {time_str} - {desc}")
                 else:
                     yield event.plain_result("格式错误，请使用: 时间 - 大致意思")
+
+    # ==================== GitHub 同步命令 ====================
+
+    @property
+    def github_token(self) -> str:
+        return self.config.get("github_token", "")
+
+    @property
+    def github_repo(self) -> str:
+        return self.config.get("github_repo", "")
+
+    @property
+    def github_file_path(self) -> str:
+        return self.config.get("github_file_path", "astrbot_schedule_config.json")
+
+    @property
+    def auto_sync(self) -> bool:
+        return self.config.get("auto_sync", False)
+
+    async def _github_api_request(self, method: str, endpoint: str, data: dict = None) -> dict:
+        """发送 GitHub API 请求"""
+        if not self.github_token:
+            return {"error": "未配置 GitHub Token"}
+
+        headers = {
+            "Authorization": f"token {self.github_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "AstrBot-Plugin"
+        }
+
+        url = f"https://api.github.com{endpoint}"
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                if method.upper() == "GET":
+                    async with session.get(url, headers=headers) as resp:
+                        if resp.status == 200:
+                            return await resp.json()
+                        else:
+                            return {"error": f"请求失败: {resp.status}"}
+                elif method.upper() == "PUT":
+                    async with session.put(url, headers=headers, json=data) as resp:
+                        if resp.status in [200, 201]:
+                            return await resp.json()
+                        else:
+                            return {"error": f"请求失败: {resp.status}"}
+                else:
+                    return {"error": f"不支持的方法: {method}"}
+        except Exception as e:
+            return {"error": f"请求异常: {e}"}
+
+    async def _github_get_file(self) -> tuple:
+        """从 GitHub 获取配置文件"""
+        if not self.github_repo:
+            return None, "未配置 GitHub 仓库"
+
+        endpoint = f"/repos/{self.github_repo}/contents/{self.github_file_path}"
+        result = await self._github_api_request("GET", endpoint)
+
+        if "error" in result:
+            return None, result["error"]
+
+        # 解码文件内容
+        import base64
+        content = base64.b64decode(result.get("content", "")).decode("utf-8")
+        sha = result.get("sha", "")
+
+        try:
+            config = json.loads(content)
+            return {"config": config, "sha": sha}, None
+        except json.JSONDecodeError as e:
+            return None, f"JSON 解析失败: {e}"
+
+    async def _github_update_file(self, config: dict, sha: str, message: str) -> tuple:
+        """更新 GitHub 上的配置文件"""
+        if not self.github_repo:
+            return None, "未配置 GitHub 仓库"
+
+        import base64
+        content = json.dumps(config, ensure_ascii=False, indent=2)
+        content_base64 = base64.b64encode(content.encode("utf-8")).decode("utf-8")
+
+        endpoint = f"/repos/{self.github_repo}/contents/{self.github_file_path}"
+        data = {
+            "message": message,
+            "content": content_base64,
+            "sha": sha
+        }
+
+        result = await self._github_api_request("PUT", endpoint, data)
+
+        if "error" in result:
+            return None, result["error"]
+
+        return result, None
+
+    def _get_sync_config(self) -> dict:
+        """获取需要同步的配置"""
+        return {
+            "weekday_templates": self.weekday_templates,
+            "rest_templates": self.rest_templates,
+            "sets": self.sets,
+            "active_set": self.active_set,
+            "calendar": self.calendar
+        }
+
+    def _apply_sync_config(self, config: dict):
+        """应用同步的配置"""
+        if "weekday_templates" in config:
+            self.config["weekday_templates"] = config["weekday_templates"]
+        if "rest_templates" in config:
+            self.config["rest_templates"] = config["rest_templates"]
+        if "sets" in config:
+            self.config["sets"] = config["sets"]
+        if "active_set" in config:
+            self.config["active_set"] = config["active_set"]
+        if "calendar" in config:
+            self.config["calendar"] = config["calendar"]
+
+    async def _auto_push(self):
+        """自动推送到 GitHub（如果开启）"""
+        if not self.auto_sync or not self.github_token or not self.github_repo:
+            return
+
+        try:
+            # 获取当前文件 SHA
+            file_data, error = await self._github_get_file()
+            sha = file_data["sha"] if file_data else ""
+
+            # 推送配置
+            config = self._get_sync_config()
+            result, error = await self._github_update_file(config, sha, "自动同步: 更新配置")
+
+            if error:
+                logger.error(f"[定时问候] 自动同步失败: {error}")
+            else:
+                logger.info("[定时问候] 自动同步成功")
+        except Exception as e:
+            logger.error(f"[定时问候] 自动同步异常: {e}")
+
+    @filter.command_group("sync")
+    def sync_group(self):
+        """GitHub 同步命令"""
+        pass
+
+    @sync_group.command("pull")
+    async def sync_pull(self, event: AstrMessageEvent):
+        """从 GitHub 拉取配置"""
+        if not self.github_token:
+            yield event.plain_result("未配置 GitHub Token")
+            return
+        if not self.github_repo:
+            yield event.plain_result("未配置 GitHub 仓库")
+            return
+
+        yield event.plain_result("正在从 GitHub 拉取配置...")
+
+        file_data, error = await self._github_get_file()
+        if error:
+            yield event.plain_result(f"拉取失败: {error}")
+            return
+
+        config = file_data["config"]
+        self._apply_sync_config(config)
+
+        yield event.plain_result("配置已从 GitHub 拉取并应用")
+
+    @sync_group.command("push")
+    async def sync_push(self, event: AstrMessageEvent):
+        """推送配置到 GitHub"""
+        if not self.github_token:
+            yield event.plain_result("未配置 GitHub Token")
+            return
+        if not self.github_repo:
+            yield event.plain_result("未配置 GitHub 仓库")
+            return
+
+        yield event.plain_result("正在推送到 GitHub...")
+
+        # 获取当前文件 SHA
+        file_data, error = await self._github_get_file()
+        sha = file_data["sha"] if file_data else ""
+
+        # 推送配置
+        config = self._get_sync_config()
+        result, error = await self._github_update_file(config, sha, "手动同步: 更新配置")
+
+        if error:
+            yield event.plain_result(f"推送失败: {error}")
+        else:
+            yield event.plain_result("配置已推送到 GitHub")
+
+    @sync_group.command("auto")
+    async def sync_auto(self, event: AstrMessageEvent, mode: str = ""):
+        """开启/关闭自动同步"""
+        if mode not in ["on", "off", ""]:
+            yield event.plain_result("参数必须为 on 或 off")
+            return
+
+        if mode == "":
+            status = "开启" if self.auto_sync else "关闭"
+            yield event.plain_result(f"自动同步: {status}")
+            return
+
+        self.config["auto_sync"] = (mode == "on")
+        status = "开启" if mode == "on" else "关闭"
+        yield event.plain_result(f"自动同步已{status}")
+
+    @sync_group.command("status")
+    async def sync_status(self, event: AstrMessageEvent):
+        """查看同步状态"""
+        lines = [
+            "=== GitHub 同步状态 ===",
+            f"Token: {'已配置' if self.github_token else '未配置'}",
+            f"仓库: {self.github_repo or '未配置'}",
+            f"文件路径: {self.github_file_path}",
+            f"自动同步: {'开启' if self.auto_sync else '关闭'}",
+        ]
+
+        if self.github_token and self.github_repo:
+            # 测试连接
+            file_data, error = await self._github_get_file()
+            if error:
+                lines.append(f"\n连接状态: 失败 ({error})")
+            else:
+                lines.append(f"\n连接状态: 正常")
+                lines.append(f"远程文件 SHA: {file_data['sha'][:8]}...")
+
+        yield event.plain_result("\n".join(lines))
