@@ -3,7 +3,7 @@ display_name: 定时问候插件
 desc: 根据作息时间表定时给指定用户发送问候消息，支持工作日/周末区分、随机延迟、AI增强
 version: v1.0.0
 author: LunaRL
-repo: https://github.com/LunaRL/astrbot_plugin_schedule_greeting
+repo: https://github.com/Clhyclhy/LunaRL
 support_platforms:
   - telegram
   - aiocqhttp
